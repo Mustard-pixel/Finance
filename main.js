@@ -1021,193 +1021,118 @@ function limparFiltrosPendentes() {
 
 function aplicarFiltros() {
   filtrosAplicados = { ...filtrosPendentes };
+  // Sync ordenacao select if exists
+  const sel = $('#filtrosOrdenacaoSelect');
+  if (sel) filtrosAplicados.ordenacao = sel.value;
   _fecharModalFiltros();
   atualizarListaTransacoes();
+}
+
+function selecionarPeriodoPendente(valor) {
+  filtrosPendentes.periodo = valor;
+  $$('.filtros-chip[data-group="periodo"]').forEach(el => el.classList.toggle('filtros-chip-active', el.dataset.value === valor));
+}
+
+function selecionarTipoPendente(valor) {
+  filtrosPendentes.tipo = valor;
+  $$('.filtros-tipo-btn').forEach(el => el.classList.toggle('filtros-tipo-active', el.dataset.value === valor));
+}
+
+function selecionarContaPendente(valor) {
+  filtrosPendentes.conta = valor;
+  $$('.filtros-conta-card').forEach(el => el.classList.toggle('filtros-conta-active', el.dataset.value === valor));
+}
+
+function selecionarCategoriaPendente(valor) {
+  filtrosPendentes.categoria = valor;
+  $$('.filtros-chip[data-group="cat"]').forEach(el => el.classList.toggle('filtros-chip-active', el.dataset.value === valor));
+}
+
+function toggleVerTodasCats() {
+  filtrosCatExpandido = !filtrosCatExpandido;
+  const wrap = $('#filtrosCatWrap');
+  const btn = $('#filtrosVerMaisBtn');
+  if (!wrap) return;
+  const contas = carregarDados('contas', []);
+  const transacoes = carregarDados('transacoes', []);
+  wrap.innerHTML = gerarChipsCategorias(transacoes);
+  if (btn) btn.textContent = filtrosCatExpandido ? '↑ Ver menos' : '↓ Ver todas as categorias';
+}
+
+function gerarChipsCategorias(transacoes) {
+  const catsComTx = [...new Set(transacoes.map(tx => tx.categoria))];
+  const todas = filtrosCatExpandido ? Object.keys(CATEGORIAS) : catsComTx.slice(0, 4);
+  const chipsExtras = todas.filter(k => CATEGORIAS[k]).map(k => {
+    const cat = CATEGORIAS[k];
+    const cor = CATEGORIA_CORES[k] || '#8E8E93';
+    const ativo = filtrosPendentes.categoria === k;
+    return `<button class="filtros-chip${ativo ? ' filtros-chip-active' : ''}" data-group="cat" data-value="${k}"
+      style="${ativo ? `background:${cor}22; color:${cor}; border-color:${cor}` : ''}"
+      onclick="selecionarCategoriaPendente('${k}')">${cat.emoji} ${cat.nome}</button>`;
+  }).join('');
+  const ativoTodas = filtrosPendentes.categoria === 'todas';
+  return `<button class="filtros-chip${ativoTodas ? ' filtros-chip-active' : ''}" data-group="cat" data-value="todas"
+    onclick="selecionarCategoriaPendente('todas')">✨ Todas</button>${chipsExtras}`;
 }
 
 function gerarCorpoFiltros(contas) {
   const transacoes = carregarDados('transacoes', []);
 
-  // Period options
-  const periodoOptions = PERIODOS_OPCOES;
-  const periodoDD = gerarCustomDropdownHTML('filtro-periodo', periodoOptions, filtrosPendentes.periodo, 'onDropdownPeriodoChange');
+  const chipsperiodo = PERIODOS_OPCOES.map(op =>
+    `<button class="filtros-chip${filtrosPendentes.periodo === op.value ? ' filtros-chip-active' : ''}" data-group="periodo" data-value="${op.value}" onclick="selecionarPeriodoPendente('${op.value}')">${op.label}</button>`
+  ).join('');
 
-  // Type options
-  const tipoOptions = [
-    { value: 'todos', label: 'Todas as Transações' },
-    { value: 'despesa', label: 'Saídas' },
-    { value: 'receita', label: 'Entradas' },
-  ];
-  const tipoDD = gerarCustomDropdownHTML('filtro-tipo', tipoOptions, filtrosPendentes.tipo, 'onDropdownTipoChange');
-
-  // Account options
-  const contaOptions = [
-    { value: 'todas', label: 'Todas as Contas' },
+  const contasCards = [
+    `<button class="filtros-conta-card${filtrosPendentes.conta === 'todas' ? ' filtros-conta-active' : ''}" data-value="todas" onclick="selecionarContaPendente('todas')">
+      <div class="filtros-conta-icon" style="background:#2A2A2A">🏛️</div>
+      <div><div class="filtros-conta-nome">Todas as cont...</div><div class="filtros-conta-tipo">Geral</div></div>
+    </button>`,
     ...contas.map(c => {
       const banco = BANCOS[c.banco] || {};
-      return { value: c.id, label: `${banco.nome || c.banco} - ${c.nome}` };
+      const ativo = filtrosPendentes.conta === c.id;
+      return `<button class="filtros-conta-card${ativo ? ' filtros-conta-active' : ''}" data-value="${c.id}" onclick="selecionarContaPendente('${c.id}')">
+        <div class="filtros-conta-icon" style="background:${banco.cor || '#333'}22; color:${banco.cor || '#aaa'}">${banco.logo || '?'}</div>
+        <div><div class="filtros-conta-nome">${banco.nome || c.banco}</div><div class="filtros-conta-tipo">${c.nome}</div></div>
+      </button>`;
     })
-  ];
-  const contaDD = gerarCustomDropdownHTML('filtro-conta', contaOptions, filtrosPendentes.conta, 'onDropdownContaChange');
+  ].join('');
 
-  // Category options
-  const catsUsadas = new Set(transacoes.map(t => t.categoria));
-  const catOptions = [
-    { value: 'todas', label: 'Todas as Categorias' },
-    ...Object.entries(CATEGORIAS)
-      .filter(([k]) => catsUsadas.has(k))
-      .map(([k, v]) => ({ value: k, label: `${v.emoji} ${v.nome}` }))
-  ];
-  const categoriaDD = gerarCustomDropdownHTML('filtro-categoria', catOptions, filtrosPendentes.categoria, 'onDropdownCategoriaChange');
-
-  // Sort options
-  const ordenacaoOptions = [
+  const ordenacaoOps = [
     { value: 'data-desc', label: 'Data (mais recentes)' },
-    { value: 'data-asc', label: 'Data (mais antigas)' },
-    { value: 'valor-desc', label: 'Valor (maior primeiro)' },
+    { value: 'data-asc',  label: 'Data (mais antigas)' },
+    { value: 'valor-desc',label: 'Valor (maior primeiro)' },
     { value: 'valor-asc', label: 'Valor (menor primeiro)' },
   ];
-  const ordenacaoDD = gerarCustomDropdownHTML('filtro-ordenacao', ordenacaoOptions, filtrosPendentes.ordenacao, 'onDropdownOrdenacaoChange');
 
   return `
     <div class="filtros-section">
       <div class="filtros-section-title">Período</div>
-      ${periodoDD}
+      <div class="filtros-chips">${chipsperiodo}</div>
     </div>
     <div class="filtros-section">
       <div class="filtros-section-title">Tipo de Transação</div>
-      ${tipoDD}
+      <div class="filtros-tipo-group">
+        <button class="filtros-tipo-btn${filtrosPendentes.tipo === 'todos'   ? ' filtros-tipo-active' : ''}" data-value="todos"   onclick="selecionarTipoPendente('todos')">Todas</button>
+        <button class="filtros-tipo-btn${filtrosPendentes.tipo === 'despesa' ? ' filtros-tipo-active' : ''}" data-value="despesa" onclick="selecionarTipoPendente('despesa')">Saídas</button>
+        <button class="filtros-tipo-btn${filtrosPendentes.tipo === 'receita' ? ' filtros-tipo-active' : ''}" data-value="receita" onclick="selecionarTipoPendente('receita')">Entradas</button>
+      </div>
     </div>
     <div class="filtros-section">
       <div class="filtros-section-title">Conta</div>
-      ${contaDD}
+      <div class="filtros-contas-scroll">${contasCards}</div>
     </div>
     <div class="filtros-section">
       <div class="filtros-section-title">Categorias</div>
-      ${categoriaDD}
+      <div class="filtros-chips" id="filtrosCatWrap">${gerarChipsCategorias(transacoes)}</div>
+      <button class="filtros-ver-mais" id="filtrosVerMaisBtn" onclick="toggleVerTodasCats()">↓ Ver todas as categorias</button>
     </div>
     <div class="filtros-section">
       <div class="filtros-section-title">Ordenar por</div>
-      ${ordenacaoDD}
+      <select class="filtros-select" id="filtrosOrdenacaoSelect">
+        ${ordenacaoOps.map(op => `<option value="${op.value}"${filtrosPendentes.ordenacao === op.value ? ' selected' : ''}>${op.label}</option>`).join('')}
+      </select>
     </div>
   `;
-}
-
-// ===== CUSTOM DROPDOWN LOGIC =====
-let currentOpenDropdown = null;
-
-function gerarCustomDropdownHTML(id, options, selectedValue, onchangeFn) {
-  const selectedOpt = options.find(o => o.value === selectedValue) || options[0];
-  return `
-    <div class="cdropdown-wrap" data-dropdown-id="${id}">
-      <button type="button" class="cdropdown-btn" onclick="toggleDropdownMenu('${id}')">
-        <span class="cdropdown-btn-label">${selectedOpt.label}</span>
-        <span class="cdropdown-arrow">▼</span>
-      </button>
-      <div class="cdropdown-menu" id="menu-${id}">
-        ${options.map(opt => `
-          <div class="cdropdown-opt${opt.value === selectedValue ? ' cdropdown-opt-selected' : ''}"
-               data-value="${opt.value}"
-               onclick="selecionarDropdownOption('${id}', '${opt.value}', '${onchangeFn}')">
-            <span class="cdropdown-opt-check">✓</span>
-            <span>${opt.label}</span>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  `;
-}
-
-function toggleDropdownMenu(dropdownId) {
-  const wrap = $(`[data-dropdown-id="${dropdownId}"]`);
-  const btn = wrap?.querySelector('.cdropdown-btn');
-  const menu = wrap?.querySelector('.cdropdown-menu');
-  if (!wrap || !btn || !menu) return;
-
-  const isOpen = menu.classList.contains('cdropdown-menu-open');
-
-  // Close any other open dropdown
-  if (currentOpenDropdown && currentOpenDropdown !== dropdownId) {
-    const prevWrap = $(`[data-dropdown-id="${currentOpenDropdown}"]`);
-    prevWrap?.querySelector('.cdropdown-btn')?.classList.remove('cdropdown-btn-open');
-    prevWrap?.querySelector('.cdropdown-menu')?.classList.remove('cdropdown-menu-open');
-  }
-
-  if (isOpen) {
-    btn.classList.remove('cdropdown-btn-open');
-    menu.classList.remove('cdropdown-menu-open');
-    currentOpenDropdown = null;
-  } else {
-    btn.classList.add('cdropdown-btn-open');
-    menu.classList.add('cdropdown-menu-open');
-    currentOpenDropdown = dropdownId;
-  }
-}
-
-function selecionarDropdownOption(dropdownId, value, onchangeFn) {
-  const wrap = $(`[data-dropdown-id="${dropdownId}"]`);
-  const btn = wrap?.querySelector('.cdropdown-btn');
-  const menu = wrap?.querySelector('.cdropdown-menu');
-  const label = btn?.querySelector('.cdropdown-btn-label');
-  const opts = menu?.querySelectorAll('.cdropdown-opt');
-
-  // Update selection state
-  opts?.forEach(opt => {
-    const isSelected = opt.dataset.value === value;
-    opt.classList.toggle('cdropdown-opt-selected', isSelected);
-  });
-
-  // Find selected label
-  const selectedOpt = Array.from(opts || []).find(o => o.dataset.value === value);
-  if (label && selectedOpt) {
-    label.textContent = selectedOpt.querySelector('span:last-child').textContent;
-  }
-
-  // Close dropdown
-  btn?.classList.remove('cdropdown-btn-open');
-  menu?.classList.remove('cdropdown-menu-open');
-  currentOpenDropdown = null;
-
-  // Execute callback
-  if (onchangeFn) {
-    try { window[onchangeFn](value, dropdownId); } catch (e) {}
-  }
-}
-
-function closeAllDropdowns() {
-  if (!currentOpenDropdown) return;
-  const wrap = $(`[data-dropdown-id="${currentOpenDropdown}"]`);
-  wrap?.querySelector('.cdropdown-btn')?.classList.remove('cdropdown-btn-open');
-  wrap?.querySelector('.cdropdown-menu')?.classList.remove('cdropdown-menu-open');
-  currentOpenDropdown = null;
-}
-
-// Close dropdown on click outside
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('.cdropdown-wrap')) {
-    closeAllDropdowns();
-  }
-});
-
-// Custom dropdown change handlers for filters
-function onDropdownPeriodoChange(value) {
-  filtrosPendentes.periodo = value;
-}
-
-function onDropdownTipoChange(value) {
-  filtrosPendentes.tipo = value;
-}
-
-function onDropdownContaChange(value) {
-  filtrosPendentes.conta = value;
-}
-
-function onDropdownCategoriaChange(value) {
-  filtrosPendentes.categoria = value;
-}
-
-function onDropdownOrdenacaoChange(value) {
-  filtrosPendentes.ordenacao = value;
 }
 
 function gerarModalFiltrosHTML() {
