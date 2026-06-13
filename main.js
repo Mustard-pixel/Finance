@@ -1021,9 +1021,6 @@ function limparFiltrosPendentes() {
 
 function aplicarFiltros() {
   filtrosAplicados = { ...filtrosPendentes };
-  // Sync ordenacao select if exists
-  const sel = $('#filtrosOrdenacaoSelect');
-  if (sel) filtrosAplicados.ordenacao = sel.value;
   _fecharModalFiltros();
   atualizarListaTransacoes();
 }
@@ -1075,6 +1072,101 @@ function gerarChipsCategorias(transacoes) {
     onclick="selecionarCategoriaPendente('todas')">✨ Todas</button>${chipsExtras}`;
 }
 
+// ===== CUSTOM DROPDOWN FOR ORDENACAO =====
+let currentOpenDropdown = null;
+
+function gerarCustomDropdownHTML(id, options, selectedValue, onchangeFn) {
+  const selectedOpt = options.find(o => o.value === selectedValue) || options[0];
+  return `
+    <div class="cdropdown-wrap" data-dropdown-id="${id}">
+      <button type="button" class="cdropdown-btn" onclick="toggleDropdownMenu('${id}')">
+        <span class="cdropdown-btn-label">${selectedOpt.label}</span>
+        <span class="cdropdown-arrow">▼</span>
+      </button>
+      <div class="cdropdown-menu" id="menu-${id}">
+        ${options.map(opt => `
+          <div class="cdropdown-opt${opt.value === selectedValue ? ' cdropdown-opt-selected' : ''}"
+               data-value="${opt.value}"
+               onclick="selecionarDropdownOption('${id}', '${opt.value}', '${onchangeFn}')">
+            <span class="cdropdown-opt-check">✓</span>
+            <span>${opt.label}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function toggleDropdownMenu(dropdownId) {
+  const wrap = $(`[data-dropdown-id="${dropdownId}"]`);
+  const btn = wrap?.querySelector('.cdropdown-btn');
+  const menu = wrap?.querySelector('.cdropdown-menu');
+  if (!wrap || !btn || !menu) return;
+
+  const isOpen = menu.classList.contains('cdropdown-menu-open');
+
+  // Close any other open dropdown
+  if (currentOpenDropdown && currentOpenDropdown !== dropdownId) {
+    const prevWrap = $(`[data-dropdown-id="${currentOpenDropdown}"]`);
+    prevWrap?.querySelector('.cdropdown-btn')?.classList.remove('cdropdown-btn-open');
+    prevWrap?.querySelector('.cdropdown-menu')?.classList.remove('cdropdown-menu-open');
+  }
+
+  if (isOpen) {
+    btn.classList.remove('cdropdown-btn-open');
+    menu.classList.remove('cdropdown-menu-open');
+    currentOpenDropdown = null;
+  } else {
+    btn.classList.add('cdropdown-btn-open');
+    menu.classList.add('cdropdown-menu-open');
+    currentOpenDropdown = dropdownId;
+  }
+}
+
+function selecionarDropdownOption(dropdownId, value, onchangeFn) {
+  const wrap = $(`[data-dropdown-id="${dropdownId}"]`);
+  const btn = wrap?.querySelector('.cdropdown-btn');
+  const menu = wrap?.querySelector('.cdropdown-menu');
+  const label = btn?.querySelector('.cdropdown-btn-label');
+  const opts = menu?.querySelectorAll('.cdropdown-opt');
+
+  // Update selection state
+  opts?.forEach(opt => {
+    const isSelected = opt.dataset.value === value;
+    opt.classList.toggle('cdropdown-opt-selected', isSelected);
+  });
+
+  // Find selected label
+  const selectedOpt = Array.from(opts || []).find(o => o.dataset.value === value);
+  if (label && selectedOpt) {
+    label.textContent = selectedOpt.querySelector('span:last-child').textContent;
+  }
+
+  // Close dropdown
+  btn?.classList.remove('cdropdown-btn-open');
+  menu?.classList.remove('cdropdown-menu-open');
+  currentOpenDropdown = null;
+
+  // Execute callback
+  if (onchangeFn) {
+    try { window[onchangeFn](value); } catch (e) {}
+  }
+}
+
+function onDropdownOrdenacaoChange(value) {
+  filtrosPendentes.ordenacao = value;
+}
+
+// Close dropdown on click outside (handled in setup, but also add dedicated handler)
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.cdropdown-wrap') && currentOpenDropdown) {
+    const wrap = $(`[data-dropdown-id="${currentOpenDropdown}"]`);
+    wrap?.querySelector('.cdropdown-btn')?.classList.remove('cdropdown-btn-open');
+    wrap?.querySelector('.cdropdown-menu')?.classList.remove('cdropdown-menu-open');
+    currentOpenDropdown = null;
+  }
+});
+
 function gerarCorpoFiltros(contas) {
   const transacoes = carregarDados('transacoes', []);
 
@@ -1103,6 +1195,7 @@ function gerarCorpoFiltros(contas) {
     { value: 'valor-desc',label: 'Valor (maior primeiro)' },
     { value: 'valor-asc', label: 'Valor (menor primeiro)' },
   ];
+  const ordenacaoDD = gerarCustomDropdownHTML('filtro-ordenacao', ordenacaoOps, filtrosPendentes.ordenacao, 'onDropdownOrdenacaoChange');
 
   return `
     <div class="filtros-section">
@@ -1128,9 +1221,7 @@ function gerarCorpoFiltros(contas) {
     </div>
     <div class="filtros-section">
       <div class="filtros-section-title">Ordenar por</div>
-      <select class="filtros-select" id="filtrosOrdenacaoSelect">
-        ${ordenacaoOps.map(op => `<option value="${op.value}"${filtrosPendentes.ordenacao === op.value ? ' selected' : ''}>${op.label}</option>`).join('')}
-      </select>
+      ${ordenacaoDD}
     </div>
   `;
 }
